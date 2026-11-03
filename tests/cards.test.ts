@@ -44,6 +44,19 @@ describe("departures card", () => {
     expect(badge?.getAttribute("style")).toContain("background:#1A1A1A");
   });
 
+  it("is named after the stop's device", async () => {
+    const card = await mount<GtfsHubDeparturesCard>("gtfs-hub-departures-card", (element) => {
+      element.setConfig({ type: "custom:gtfs-hub-departures-card", entity: "sensor.bogucice_next_departure" });
+      element.hass = {
+        ...hass([sensor([departure()])]),
+        entities: { "sensor.bogucice_next_departure": { device_id: "d1" } },
+        devices: { d1: { name: "Bogucice Cmentarz", name_by_user: null } },
+      };
+    });
+    const header = card.shadowRoot?.querySelector("ha-card") as unknown as { header?: string };
+    expect(header.header).toBe("Bogucice Cmentarz");
+  });
+
   it("follows the sensor", async () => {
     const card = await mount<GtfsHubDeparturesCard>("gtfs-hub-departures-card", (element) => {
       element.setConfig({ type: "custom:gtfs-hub-departures-card", entity: "sensor.bogucice_next_departure" });
@@ -148,6 +161,26 @@ describe("line map card", () => {
     (card as unknown as { _shapes: unknown })._shapes = { ...response };
     await vi.waitFor(() => expect(drawn).toHaveLength(1));
     expect(fitted).toEqual([2]);
+  });
+
+  it("calls the action once while the first call is pending", async () => {
+    vi.useRealTimers();
+    let calls = 0;
+    let answer: (value: unknown) => void = () => undefined;
+    const pending = <T,>() => {
+      calls += 1;
+      return new Promise<T>((resolve) => (answer = resolve as (value: unknown) => void));
+    };
+    const card = await mount<GtfsHubLineMapCard>("gtfs-hub-line-map-card", (element) => {
+      element.hass = hass([], "en", pending);
+      element.setConfig({ type: "custom:gtfs-hub-line-map-card", entry: "e1", line: "11" });
+    });
+    for (let index = 0; index < 5; index += 1) {
+      card.hass = hass([], "en", pending);
+      await card.updateComplete;
+    }
+    expect(calls).toBe(1);
+    answer({ response: { ...line, line_color: "#000000", line_text_color: "#FFFFFF", shapes: [] } });
   });
 
   it("shows the action's refusal", async () => {

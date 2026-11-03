@@ -37,14 +37,30 @@ function badge(departure: Departure): { background: string; text: string } {
   return { background: MODE_COLOURS[modeOf(departure.route_type)] ?? "#455A64", text: "#FFFFFF" };
 }
 
-function timeLabel(expected: Date, now: Date, language: string, timeZone: string): string {
+/** The user's hour cycle: "12", "24", or the language's own for anything else. */
+function hour12(timeFormat: string | undefined): { hour12?: boolean } {
+  if (timeFormat === "12") return { hour12: true };
+  if (timeFormat === "24") return { hour12: false };
+  return {};
+}
+
+function timeLabel(
+  expected: Date,
+  now: Date,
+  language: string,
+  timeZone: string,
+  timeFormat: string | undefined,
+): string {
   const text = strings(language);
   const minutes = Math.floor((expected.getTime() - now.getTime()) / MINUTE_MS);
   if (minutes < 1) return text.now;
   if (minutes < CLOCK_FROM_MINUTES) return `${minutes} ${text.min}`;
-  return new Intl.DateTimeFormat(language, { hour: "2-digit", minute: "2-digit", timeZone }).format(
-    expected,
-  );
+  return new Intl.DateTimeFormat(language, {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone,
+    ...hour12(timeFormat),
+  }).format(expected);
 }
 
 function delayLabel(departure: Departure): string | null {
@@ -60,6 +76,7 @@ export function rowsOf(
   limit: number,
   language: string,
   timeZone: string,
+  timeFormat?: string,
 ): Row[] {
   const text = strings(language);
   return departures
@@ -75,7 +92,7 @@ export function rowsOf(
         line: departure.line,
         ...colours,
         headsign: departure.headsign ?? "",
-        time: timeLabel(expected, now, language, timeZone),
+        time: timeLabel(expected, now, language, timeZone, timeFormat),
         live: departure.status === "predicted",
         delay: delayLabel(departure),
         note:

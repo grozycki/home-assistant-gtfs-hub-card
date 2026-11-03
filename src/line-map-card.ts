@@ -93,6 +93,7 @@ export class GtfsHubLineMapCard extends LitElement {
   declare _mapReady: boolean;
   private _layers: Layer[] = [];
   private _fitted = false;
+  private _fetching = false;
   private _timer: ReturnType<typeof setInterval> | undefined;
 
   constructor() {
@@ -139,7 +140,9 @@ export class GtfsHubLineMapCard extends LitElement {
   }
 
   private async _fetch(): Promise<void> {
-    if (!this.hass || !this._config) return;
+    // State changes come many times a second, and must not each start a call.
+    if (!this.hass || !this._config || this._fetching) return;
+    this._fetching = true;
     const data: Record<string, unknown> = { config_entry_id: this._config.entry, line: this._config.line };
     if (this._config.route_type !== undefined) data["route_type"] = this._config.route_type;
     try {
@@ -154,6 +157,8 @@ export class GtfsHubLineMapCard extends LitElement {
       this._error = undefined;
     } catch (err) {
       this._error = err instanceof Error ? err.message : String((err as { message?: unknown }).message ?? err);
+    } finally {
+      this._fetching = false;
     }
   }
 

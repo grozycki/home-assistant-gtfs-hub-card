@@ -19,6 +19,14 @@ export function languageOf(hass: HomeAssistant): string {
   return hass.locale?.language ?? hass.language ?? "en";
 }
 
+/** Name a board after the stop's device, as sensor names add what they measure. */
+export function stopName(hass: HomeAssistant, entityId: string): string | undefined {
+  const deviceId = hass.entities?.[entityId]?.device_id;
+  const device = deviceId ? hass.devices?.[deviceId] : undefined;
+  const name = device?.name_by_user ?? device?.name ?? hass.states[entityId]?.attributes["friendly_name"];
+  return typeof name === "string" ? name : undefined;
+}
+
 export class GtfsHubDeparturesCard extends LitElement {
   static override properties = {
     hass: { attribute: false },
@@ -79,7 +87,7 @@ export class GtfsHubDeparturesCard extends LitElement {
     const language = languageOf(this.hass);
     const text = strings(language);
     const state = this.hass.states[this._config.entity];
-    const title = this._config.title ?? state?.attributes["friendly_name"];
+    const title = this._config.title ?? stopName(this.hass, this._config.entity);
     const attribution = state?.attributes["attribution"];
     let body: unknown;
     if (!state || state.state === "unavailable") {
@@ -91,6 +99,7 @@ export class GtfsHubDeparturesCard extends LitElement {
         this._config.limit ?? MAX_LIMIT,
         language,
         this.hass.config.time_zone,
+        this.hass.locale?.time_format,
       );
       body = rows.length
         ? html`<ul>
@@ -111,7 +120,7 @@ export class GtfsHubDeparturesCard extends LitElement {
           </ul>`
         : html`<div class="empty">${text.none}</div>`;
     }
-    return html`<ha-card .header=${typeof title === "string" ? title : undefined}>
+    return html`<ha-card .header=${title}>
       <div class="card-content">${body}</div>
       ${typeof attribution === "string"
         ? html`<div class="attribution">${attribution}</div>`

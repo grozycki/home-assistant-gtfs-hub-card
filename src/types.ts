@@ -8,7 +8,9 @@ export interface HassEntity {
 
 export interface HomeAssistant {
   states: Record<string, HassEntity | undefined>;
-  locale?: { language: string };
+  entities?: Record<string, { device_id?: string | null } | undefined>;
+  devices?: Record<string, { name?: string | null; name_by_user?: string | null } | undefined>;
+  locale?: { language: string; time_format?: string };
   language?: string;
   config: { time_zone: string };
   callWS<T>(message: Record<string, unknown>): Promise<T>;

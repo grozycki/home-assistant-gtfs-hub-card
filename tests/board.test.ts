@@ -20,6 +20,12 @@ describe("time", () => {
     expect(rows([departure({ scheduled: at(75 * 60) })], "pl")[0]?.time).toBe("18:15");
   });
 
+  it("follows the user's hour cycle", () => {
+    const later = [departure({ scheduled: at(75 * 60) })];
+    expect(rowsOf(later, NOW, 5, "en", "Europe/Warsaw", "12")[0]?.time).toMatch(/06:15\s?PM/);
+    expect(rowsOf(later, NOW, 5, "en", "Europe/Warsaw", "24")[0]?.time).toBe("18:15");
+  });
+
   it("hides departures gone for more than 30 s", () => {
     expect(rows([departure({ scheduled: at(-45) }), departure({ scheduled: at(-20) })])).toHaveLength(1);
   });
