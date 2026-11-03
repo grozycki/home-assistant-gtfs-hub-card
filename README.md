@@ -44,7 +44,7 @@ The card draws on Home Assistant's own map. It uses the map's internal Leaflet l
 
 ## Installation
 
-Copy `dist/gtfs-hub-card.js` to `config/www/`, then add `/local/gtfs-hub-card.js` as a JavaScript module under Settings, Dashboards, Resources.
+Copy `dist/home-assistant-gtfs-hub-card.js` to `config/www/`, then add `/local/home-assistant-gtfs-hub-card.js` as a JavaScript module under Settings, Dashboards, Resources.
 
 ## Development
 

@@ -1,12 +1,12 @@
 {
-  "name": "gtfs-hub-card",
+  "name": "home-assistant-gtfs-hub-card",
   "version": "0.1.0",
   "private": true,
   "description": "Departure board and line map cards for the GTFS Hub Home Assistant integration",
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --format=esm --target=es2022 --minify --outfile=dist/gtfs-hub-card.js",
+    "build": "esbuild src/index.ts --bundle --format=esm --target=es2022 --minify --outfile=dist/home-assistant-gtfs-hub-card.js",
     "check": "tsc --noEmit",
     "test": "vitest run"
   },
