@@ -32,10 +32,13 @@ interface Layer {
 
 /** The map engine of Home Assistant 2026.10 and later, built on MapLibre. */
 interface Engine {
+  // Set once MapLibre has loaded; until then addPath quietly draws nothing.
+  _map?: unknown;
   addPath(path: { color: string; segments: { points: [number, number][] }[]; markers: [] }): Layer;
   fitBounds(
     points: [number, number][],
-    options: { pad: number; padding: Record<"top" | "right" | "bottom" | "left", number> },
+    // Without maxZoom the engine works out NaN and throws.
+    options: { pad: number; maxZoom: number; padding: Record<"top" | "right" | "bottom" | "left", number> },
   ): void;
 }
 
@@ -57,23 +60,28 @@ interface HaMap extends HTMLElement {
 
 /** A way to draw on the map, whichever internals this Home Assistant has. */
 interface Painter {
+  // What the paths are drawn on, so a rebuilt map is noticed.
+  owner: object;
   path(points: [number, number][], colour: string): Layer;
   fit(points: [number, number][]): void;
 }
 
 const PADDING = 16;
+const MAX_ZOOM = 17;
 
 /** Find how to draw on a map. Both ways are frontend internals, so neither may be there. */
 export function painterOf(map: HaMap): Painter | undefined {
   const engine = map._engine;
-  if (typeof engine?.addPath === "function" && typeof engine.fitBounds === "function") {
+  if (engine?._map && typeof engine.addPath === "function" && typeof engine.fitBounds === "function") {
     const { addPath, fitBounds } = engine as Engine;
     return {
+      owner: engine,
       // One segment per path, with no markers, draws a line without a dot at every point.
       path: (points, colour) => addPath.call(engine, { color: colour, segments: [{ points }], markers: [] }),
       fit: (points) =>
         fitBounds.call(engine, points, {
           pad: 0.05,
+          maxZoom: MAX_ZOOM,
           padding: { top: PADDING, right: PADDING, bottom: PADDING, left: PADDING },
         }),
     };
@@ -81,6 +89,7 @@ export function painterOf(map: HaMap): Painter | undefined {
   const { leafletMap, Leaflet: leaflet } = map;
   if (leafletMap && leaflet) {
     return {
+      owner: leafletMap,
       path: (points, colour) =>
         leaflet.polyline(points, { color: colour, weight: 4, opacity: 0.8, interactive: false }).addTo(leafletMap),
       fit: (points) => leafletMap.fitBounds(leaflet.latLngBounds(points), { padding: [PADDING, PADDING] }),
@@ -142,6 +151,8 @@ export class GtfsHubLineMapCard extends LitElement {
   private _layers: Layer[] = [];
   private _fitted = false;
   private _fetching = false;
+  private _drawing = false;
+  private _owner: object | undefined;
   private _timer: ReturnType<typeof setInterval> | undefined;
 
   constructor() {
@@ -211,13 +222,30 @@ export class GtfsHubLineMapCard extends LitElement {
   }
 
   protected override updated(changed: PropertyValues<this>): void {
-    if (changed.has("_shapes") || changed.has("_mapReady")) void this._drawPaths();
+    if (changed.has("_shapes") || changed.has("_mapReady") || this._needsRedraw()) void this._drawPaths();
     if (changed.has("hass") && !this._shapes && !this._error) void this._fetch();
+  }
+
+  /** A map that was slow to start, or rebuilt its engine, needs its paths drawn again. */
+  private _needsRedraw(): boolean {
+    const map = this.renderRoot.querySelector<HaMap>("ha-map");
+    if (!map || !this._shapes || this._drawing) return false;
+    const painter = painterOf(map);
+    return painter !== undefined && painter.owner !== this._owner;
   }
 
   private async _drawPaths(): Promise<void> {
     const map = this.renderRoot.querySelector<HaMap>("ha-map");
-    if (!map || !this._shapes) return;
+    if (!map || !this._shapes || this._drawing) return;
+    this._drawing = true;
+    try {
+      await this._paint(map, this._shapes);
+    } finally {
+      this._drawing = false;
+    }
+  }
+
+  private async _paint(map: HaMap, shapes: LineShapes): Promise<void> {
     // The map builds its engine on its own, after its first render.
     const deadline = Date.now() + MAP_WAIT_MS;
     let painter = painterOf(map);
@@ -232,12 +260,20 @@ export class GtfsHubLineMapCard extends LitElement {
     }
     this._noPaths = false;
     this._layers.forEach((layer) => layer.remove());
-    const colour = this._shapes.path_color ?? this._shapes.line_color;
-    this._layers = this._shapes.shapes.map((shape) => painter.path(shape.points, colour));
-    const points = this._shapes.shapes.flatMap((shape) => shape.points);
+    const colour = shapes.path_color ?? shapes.line_color;
+    this._layers = shapes.shapes.map((shape) => painter.path(shape.points, colour));
+    const points = shapes.shapes.flatMap((shape) => shape.points);
+    // A new map has its own view, so it is fitted again.
+    if (painter.owner !== this._owner) this._fitted = false;
+    this._owner = painter.owner;
     if (!this._fitted && points.length) {
-      painter.fit(points);
       this._fitted = true;
+      try {
+        painter.fit(points);
+      } catch (err) {
+        // A view that cannot be fitted still shows the paths.
+        console.warn("GTFS Hub line map cannot fit the paths", err);
+      }
     }
   }
 

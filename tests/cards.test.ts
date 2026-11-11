@@ -141,11 +141,12 @@ describe("line map card", () => {
       addPath: (path: unknown) => (added.push(path), { remove() {} }),
       fitBounds: (points: unknown, options: unknown) => fitted.push([points, options]),
     };
-    const painter = painterOf(Object.assign(document.createElement("div"), { _engine: engine }));
+    expect(painterOf(Object.assign(document.createElement("div"), { _engine: { ...engine } }))).toBeUndefined();
+    const painter = painterOf(Object.assign(document.createElement("div"), { _engine: { ...engine, _map: {} } }));
     painter?.path([[50, 19], [50.1, 19.1]], "#FFD200");
     painter?.fit([[50, 19]]);
     expect(added).toEqual([{ color: "#FFD200", segments: [{ points: [[50, 19], [50.1, 19.1]] }], markers: [] }]);
-    expect(fitted).toEqual([[[[50, 19]], { pad: 0.05, padding: { top: 16, right: 16, bottom: 16, left: 16 } }]]);
+    expect(fitted).toEqual([[[[50, 19]], { pad: 0.05, maxZoom: 17, padding: { top: 16, right: 16, bottom: 16, left: 16 } }]]);
   });
 
   it("falls back to Leaflet on older maps", () => {
@@ -182,10 +183,34 @@ describe("line map card", () => {
     });
     await vi.waitFor(() => expect(card.shadowRoot?.querySelector("ha-map")).not.toBeNull());
     Object.assign(card.shadowRoot?.querySelector("ha-map") as HTMLElement, {
-      _engine: { addPath: (path: { color: string }) => (added.push(path), { remove() {} }), fitBounds() {} },
+      _engine: { _map: {}, addPath: (path: { color: string }) => (added.push(path), { remove() {} }), fitBounds() {} },
     });
     await vi.waitFor(() => expect(added.map((path) => path.color)).toEqual(["#FFD200"]));
   });
+
+  it("draws again on a map that starts late or rebuilds its engine", async () => {
+    vi.useRealTimers();
+    const added: unknown[] = [];
+    const engine = () => ({ _map: {}, addPath: (path: unknown) => (added.push(path), { remove() {} }), fitBounds() {} });
+    const response = {
+      ...line,
+      line_color: "#1A1A1A",
+      line_text_color: "#FFD200",
+      shapes: [{ id: "a", points: [[50, 19], [50.1, 19.1]] as [number, number][] }],
+    };
+    const card = await mount<GtfsHubLineMapCard>("gtfs-hub-line-map-card", (element) => {
+      element.hass = hass([], "en", <T,>() => Promise.resolve({ response } as T));
+      element.setConfig({ type: "custom:gtfs-hub-line-map-card", entry: "e1", line: "11" });
+    });
+    await vi.waitFor(() => expect(text(card)).toContain("cannot draw paths"), { timeout: 8000 });
+    const map = card.shadowRoot?.querySelector("ha-map") as HTMLElement;
+    Object.assign(map, { _engine: engine() });
+    card.hass = hass([], "en", <T,>() => Promise.resolve({ response } as T));
+    await vi.waitFor(() => expect(added).toHaveLength(1));
+    Object.assign(map, { _engine: engine() });
+    card.hass = hass([], "en", <T,>() => Promise.resolve({ response } as T));
+    await vi.waitFor(() => expect(added).toHaveLength(2));
+  }, 12_000);
 
   it("calls the action once while the first call is pending", async () => {
     vi.useRealTimers();
