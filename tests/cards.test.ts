@@ -232,6 +232,21 @@ describe("line map card", () => {
     answer({ response: { ...line, line_color: "#000000", line_text_color: "#FFFFFF", shapes: [] } });
   });
 
+  it("passes map editor changes on as a new config", async () => {
+    const editor = await mount<HTMLElement & { updateComplete: Promise<boolean>; setConfig(c: object): void; hass: unknown }>(
+      "gtfs-hub-line-map-card-editor",
+      (element) => {
+        element.setConfig({ type: "custom:gtfs-hub-line-map-card", entry: "e1", line: "11" });
+        element.hass = hass([]);
+      },
+    );
+    const seen: unknown[] = [];
+    editor.addEventListener("config-changed", (event) => seen.push((event as CustomEvent).detail.config));
+    const next = { type: "custom:gtfs-hub-line-map-card", entry: "e1", line: "6" };
+    editor.shadowRoot?.querySelector("ha-form")?.dispatchEvent(new CustomEvent("value-changed", { detail: { value: next } }));
+    expect(seen).toEqual([next]);
+  });
+
   it("shows the action's refusal", async () => {
     vi.useRealTimers();
     const card = await mount<GtfsHubLineMapCard>("gtfs-hub-line-map-card", (element) => {
