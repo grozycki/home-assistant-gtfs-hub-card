@@ -16,7 +16,7 @@ limit: 5
 | Option | Meaning |
 |---|---|
 | `entity` | The sensor, required |
-| `title` | Defaults to the sensor's name |
+| `title` | Defaults to the stop's name |
 | `limit` | Departures shown, at most 5, as the sensor lists five |
 
 Each row shows the line in its badge colours, the headsign, and the time: "now" under a minute, minutes under an hour, and the clock time after. A green dot marks live data, and a delay of a minute or more shows as `+N`, or `−N` when early. Cancelled trips are struck through. The board follows the sensor and polls nothing.
@@ -40,11 +40,20 @@ height: 400
 | `route_type` | Needed only when two modes share the name, such as a bus 11 and a tram 11 |
 | `height` | In pixels, 400 by default |
 
-The card draws on Home Assistant's own map. It uses the map's internal Leaflet layer to draw paths; if a future Home Assistant changes it, the card still shows the vehicles and says the paths cannot be drawn.
+The card draws on Home Assistant's own map, through its internal map engine, or its Leaflet layer on older versions; if a future Home Assistant changes both, the card still shows the vehicles and says the paths cannot be drawn.
 
 ## Installation
 
-Copy `dist/home-assistant-gtfs-hub-card.js` to `config/www/`, then add `/local/home-assistant-gtfs-hub-card.js` as a JavaScript module under Settings, Dashboards, Resources.
+The cards are not in the Marketplace catalogue yet, so add them from their repository:
+
+[![Open your Home Assistant instance and open this repository.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=grozycki&repository=home-assistant-gtfs-hub-card&category=plugin)
+
+1. Open the link above, or add `https://github.com/grozycki/home-assistant-gtfs-hub-card` as a custom repository of type Dashboard, in the Marketplace on Home Assistant 2026.11 or later, or in HACS on 2026.10.
+2. Download it; the dashboard resource is added for you. Reload the browser.
+
+By hand: download `home-assistant-gtfs-hub-card.js` from the [latest release](https://github.com/grozycki/home-assistant-gtfs-hub-card/releases/latest) into `config/www/`, then add `/local/home-assistant-gtfs-hub-card.js` as a JavaScript module under Settings, Dashboards, Resources.
+
+Releases follow [Semantic Versioning](https://semver.org/) and are listed in the [changelog](CHANGELOG.md).
 
 ## Development
 
