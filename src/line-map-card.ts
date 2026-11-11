@@ -20,25 +20,73 @@ export interface LineShapes {
   route_type: number;
   line_color: string;
   line_text_color: string;
+  // Missing from integrations older than the path colour.
+  path_color?: string;
   shapes: { id: string; points: [number, number][] }[];
 }
 
-/** The parts of Leaflet the card draws with. */
-interface Leaflet {
-  polyline(points: [number, number][], options: Record<string, unknown>): Layer;
-  latLngBounds(points: [number, number][]): unknown;
-}
+/** A drawn path, which a redraw removes. */
 interface Layer {
-  addTo(map: LeafletMap): Layer;
   remove(): void;
+}
+
+/** The map engine of Home Assistant 2026.10 and later, built on MapLibre. */
+interface Engine {
+  addPath(path: { color: string; segments: { points: [number, number][] }[]; markers: [] }): Layer;
+  fitBounds(
+    points: [number, number][],
+    options: { pad: number; padding: Record<"top" | "right" | "bottom" | "left", number> },
+  ): void;
+}
+
+/** Leaflet, which older Home Assistant maps were built on. */
+interface Leaflet {
+  polyline(points: [number, number][], options: Record<string, unknown>): Layer & { addTo(map: LeafletMap): Layer };
+  latLngBounds(points: [number, number][]): unknown;
 }
 interface LeafletMap {
   fitBounds(bounds: unknown, options: Record<string, unknown>): void;
 }
+
 interface HaMap extends HTMLElement {
+  _engine?: Partial<Engine>;
   leafletMap?: LeafletMap;
   Leaflet?: Leaflet;
   updateComplete?: Promise<unknown>;
+}
+
+/** A way to draw on the map, whichever internals this Home Assistant has. */
+interface Painter {
+  path(points: [number, number][], colour: string): Layer;
+  fit(points: [number, number][]): void;
+}
+
+const PADDING = 16;
+
+/** Find how to draw on a map. Both ways are frontend internals, so neither may be there. */
+export function painterOf(map: HaMap): Painter | undefined {
+  const engine = map._engine;
+  if (typeof engine?.addPath === "function" && typeof engine.fitBounds === "function") {
+    const { addPath, fitBounds } = engine as Engine;
+    return {
+      // One segment per path, with no markers, draws a line without a dot at every point.
+      path: (points, colour) => addPath.call(engine, { color: colour, segments: [{ points }], markers: [] }),
+      fit: (points) =>
+        fitBounds.call(engine, points, {
+          pad: 0.05,
+          padding: { top: PADDING, right: PADDING, bottom: PADDING, left: PADDING },
+        }),
+    };
+  }
+  const { leafletMap, Leaflet: leaflet } = map;
+  if (leafletMap && leaflet) {
+    return {
+      path: (points, colour) =>
+        leaflet.polyline(points, { color: colour, weight: 4, opacity: 0.8, interactive: false }).addTo(leafletMap),
+      fit: (points) => leafletMap.fitBounds(leaflet.latLngBounds(points), { padding: [PADDING, PADDING] }),
+    };
+  }
+  return undefined;
 }
 
 const REFRESH_MS = 3_600_000;
@@ -170,26 +218,25 @@ export class GtfsHubLineMapCard extends LitElement {
   private async _drawPaths(): Promise<void> {
     const map = this.renderRoot.querySelector<HaMap>("ha-map");
     if (!map || !this._shapes) return;
-    // The map loads Leaflet on its own, after its first render.
+    // The map builds its engine on its own, after its first render.
     const deadline = Date.now() + MAP_WAIT_MS;
-    while (!(map.leafletMap && map.Leaflet) && Date.now() < deadline) {
+    let painter = painterOf(map);
+    while (!painter && Date.now() < deadline) {
       await (map.updateComplete ?? sleep(100));
       await sleep(100);
+      painter = painterOf(map);
     }
-    const { leafletMap, Leaflet: leaflet } = map;
-    if (!leafletMap || !leaflet) {
+    if (!painter) {
       this._noPaths = true;
       return;
     }
     this._noPaths = false;
     this._layers.forEach((layer) => layer.remove());
-    const colour = this._shapes.line_color;
-    this._layers = this._shapes.shapes.map((shape) =>
-      leaflet.polyline(shape.points, { color: colour, weight: 4, opacity: 0.8, interactive: false }).addTo(leafletMap),
-    );
+    const colour = this._shapes.path_color ?? this._shapes.line_color;
+    this._layers = this._shapes.shapes.map((shape) => painter.path(shape.points, colour));
     const points = this._shapes.shapes.flatMap((shape) => shape.points);
     if (!this._fitted && points.length) {
-      leafletMap.fitBounds(leaflet.latLngBounds(points), { padding: [16, 16] });
+      painter.fit(points);
       this._fitted = true;
     }
   }

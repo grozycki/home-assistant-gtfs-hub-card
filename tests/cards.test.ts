@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import "../src/index";
 import type { GtfsHubDeparturesCard } from "../src/departures-card";
-import { type GtfsHubLineMapCard, vehiclesOf } from "../src/line-map-card";
+import { type GtfsHubLineMapCard, painterOf, vehiclesOf } from "../src/line-map-card";
 import type { HassEntity } from "../src/types";
 import { NOW, at, departure, hass, sensor } from "./fixtures";
 
@@ -134,33 +134,57 @@ describe("line map card", () => {
     await vi.waitFor(() => expect(text(card)).toContain("cannot draw paths"), { timeout: 8000 });
   }, 10_000);
 
-  it("draws paths and fits them when the map has Leaflet", async () => {
-    vi.useRealTimers();
-    const drawn: [number, number][][] = [];
+  it("draws paths with the MapLibre engine, without a dot per point", () => {
+    const added: unknown[] = [];
     const fitted: unknown[] = [];
-    class LeafletMap extends HTMLElement {
-      leafletMap = { fitBounds: (bounds: unknown) => fitted.push(bounds) };
-      Leaflet = {
-        polyline: (points: [number, number][]) => {
-          drawn.push(points);
-          return { addTo() { return this; }, remove() {} };
-        },
-        latLngBounds: (points: [number, number][]) => points.length,
-      };
-    }
-    customElements.define("ha-map-with-leaflet", LeafletMap);
-    const response = { ...line, line_color: "#1A1A1A", line_text_color: "#FFD200", shapes: [{ id: "a", points: [[50, 19], [50.1, 19.1]] as [number, number][] }] };
+    const engine = {
+      addPath: (path: unknown) => (added.push(path), { remove() {} }),
+      fitBounds: (points: unknown, options: unknown) => fitted.push([points, options]),
+    };
+    const painter = painterOf(Object.assign(document.createElement("div"), { _engine: engine }));
+    painter?.path([[50, 19], [50.1, 19.1]], "#FFD200");
+    painter?.fit([[50, 19]]);
+    expect(added).toEqual([{ color: "#FFD200", segments: [{ points: [[50, 19], [50.1, 19.1]] }], markers: [] }]);
+    expect(fitted).toEqual([[[[50, 19]], { pad: 0.05, padding: { top: 16, right: 16, bottom: 16, left: 16 } }]]);
+  });
+
+  it("falls back to Leaflet on older maps", () => {
+    const drawn: unknown[] = [];
+    const leaflet = {
+      polyline: (points: unknown) => (drawn.push(points), { addTo() { return { remove() {} }; }, remove() {} }),
+      latLngBounds: (points: unknown[]) => points.length,
+    };
+    const fitted: unknown[] = [];
+    const map = Object.assign(document.createElement("div"), {
+      Leaflet: leaflet,
+      leafletMap: { fitBounds: (bounds: unknown) => fitted.push(bounds) },
+    });
+    const painter = painterOf(map);
+    painter?.path([[50, 19]], "#000000");
+    painter?.fit([[50, 19], [51, 20]]);
+    expect(drawn).toEqual([[[50, 19]]]);
+    expect(fitted).toEqual([2]);
+  });
+
+  it("draws in the path colour once the map's engine appears", async () => {
+    vi.useRealTimers();
+    const added: { color: string }[] = [];
+    const response = {
+      ...line,
+      line_color: "#1A1A1A",
+      line_text_color: "#FFD200",
+      path_color: "#FFD200",
+      shapes: [{ id: "a", points: [[50, 19], [50.1, 19.1]] as [number, number][] }],
+    };
     const card = await mount<GtfsHubLineMapCard>("gtfs-hub-line-map-card", (element) => {
       element.hass = hass([], "en", <T,>() => Promise.resolve({ response } as T));
       element.setConfig({ type: "custom:gtfs-hub-line-map-card", entry: "e1", line: "11" });
     });
     await vi.waitFor(() => expect(card.shadowRoot?.querySelector("ha-map")).not.toBeNull());
-    const map = card.shadowRoot?.querySelector("ha-map") as unknown as Record<string, unknown>;
-    Object.assign(map, new LeafletMap());
-    // Redraw now that the stand-in has Leaflet.
-    (card as unknown as { _shapes: unknown })._shapes = { ...response };
-    await vi.waitFor(() => expect(drawn).toHaveLength(1));
-    expect(fitted).toEqual([2]);
+    Object.assign(card.shadowRoot?.querySelector("ha-map") as HTMLElement, {
+      _engine: { addPath: (path: { color: string }) => (added.push(path), { remove() {} }), fitBounds() {} },
+    });
+    await vi.waitFor(() => expect(added.map((path) => path.color)).toEqual(["#FFD200"]));
   });
 
   it("calls the action once while the first call is pending", async () => {
