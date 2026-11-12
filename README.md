@@ -48,7 +48,7 @@ The cards are not in the Marketplace catalogue yet, so add them from their repos
 
 [![Open your Home Assistant instance and open this repository.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=grozycki&repository=home-assistant-gtfs-hub-card&category=plugin)
 
-1. Open the link above, or add `https://github.com/grozycki/home-assistant-gtfs-hub-card` as a custom repository of type Dashboard, in the Marketplace on Home Assistant 2026.11 or later, or in HACS on 2026.10.
+1. Open the link above. Or, on Home Assistant 2026.11 or later, go to Settings, Marketplace, Add from link and enter `https://github.com/grozycki/home-assistant-gtfs-hub-card`; on 2026.10, add it in HACS as a custom repository of type Dashboard. The first custom repository makes the Marketplace connect to GitHub once, with a code you enter on github.com.
 2. Download it; the dashboard resource is added for you. Reload the browser.
 
 By hand: download `home-assistant-gtfs-hub-card.js` from the [latest release](https://github.com/grozycki/home-assistant-gtfs-hub-card/releases/latest) into `config/www/`, then add `/local/home-assistant-gtfs-hub-card.js` as a JavaScript module under Settings, Dashboards, Resources.
